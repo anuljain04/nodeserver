@@ -2,78 +2,70 @@
 var http = require('http'),
     url = require("url"),
     path = require("path"),
-    fs = require("fs");
-
+    fs = require("fs"),
+	busboy = require('connect-busboy'),
+	express = require('express'),
+	app = express();
+ 
 //Lets define a port we want to listen to
-const PORT=4080; 
+const PORT=8080;
+app.use(busboy());
+app.use(express.static('img'));
+app.use(express.static(path.join(__dirname, 'public')));
+app.get('/fileList', function (request, response) {
+    console.log('request starting...');
+	var files = fs.readdirSync('./img');
+	// thumb(options, callback); 
+	response.writeHead(200, { 'Content-Type': 'text/html' });
+	response.end(String(files));
+	return;
+});
 
-//We need a function which handles requests and send response
-function handleRequest(request, response){
-        console.log('request starting...');
-
-    var filePath = '.' + request.url;
-    if (filePath == './') {
-        var files = fs.readdirSync('./files');
+app.get('/delete',function(request, response){
+	console.log('delete request' + request.params + "||" +request.query);
+	var filename = "img/" + request.query.filename;
+	fs.unlink(filename,function(status){
 		response.writeHead(200, { 'Content-Type': 'text/html' });
-		response.end(String(files));
-		return;
-	}
+		if(status == null) {
+			response.end("file deleted!!");
+		} else {
+			response.end(String(status));
+		}
+	});
+	return;
+}); 
 
-    var extname = path.extname(filePath);
-    var contentType = 'text/html';
-    switch (extname) {
-        case '.js':
-            contentType = 'text/javascript';
-            break;
-        case '.css':
-            contentType = 'text/css';
-            break;
-        case '.json':
-            contentType = 'application/json';
-            break;
-        case '.png':
-            contentType = 'image/png';
-            break;      
-        case '.jpg':
-            contentType = 'image/jpg';
-            break;
-        case '.wav':
-            contentType = 'audio/wav';
-            break;
-    }
-
-    fs.readFile(filePath, function(error, content) {
-        if (error) {
-            if(error.code == 'ENOENT'){
-                fs.readFile('./404.html', function(error, content) {
-                    response.writeHead(200, { 'Content-Type': contentType });
-                    response.end(content, 'utf-8');
-                });
-            }
-            else {
-                response.writeHead(500);
-                response.end('Sorry, check with the site admin for error: '+error.code+' ..\n');
-                response.end(); 
-            }
-        }
-        else {
-            response.writeHead(200, { 'Content-Type': contentType });
-            response.end(content, 'utf-8');
-        }
+app.route('/upload')
+    .post(function (req, res, next) {
+        var fstream;
+        req.pipe(req.busboy);
+        req.busboy.on('file', function (fieldname, file, filename) {
+            console.log("Uploading: " + filename);
+            //Path where image will be uploaded
+            fstream = fs.createWriteStream(__dirname + '/img/' + filename);
+            file.pipe(fstream);
+            fstream.on('close', function () {    
+                console.log("Upload Finished of " + filename);              
+                res.redirect('back');           //where to go next
+            });
+        });
     });
-	
-	request.on('error', function(err) {
-    console.error(err);
-    response.statusCode = 400;
-    response.end();
-  });
+
+app.listen(PORT, function () {
+  console.log('Example app listening on port!'+PORT);
+});
+
+var os = require('os');
+
+var interfaces = os.networkInterfaces();
+var addresses = [];
+for (var k in interfaces) {
+    for (var k2 in interfaces[k]) {
+        var address = interfaces[k][k2];
+        if (address.family === 'IPv4' && !address.internal) {
+            addresses.push(address.address);
+        }
+    }
 }
 
-//Create a server
-var server = http.createServer(handleRequest);
-
-//Lets start our server
-server.listen(PORT, function(){
-    //Callback triggered when server is successfully listening. Hurray!
-    console.log("Server listening on: http://localhost:%s", PORT);
-});
+console.log(addresses);
